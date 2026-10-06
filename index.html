@@ -98,7 +98,7 @@ button.go:disabled { opacity: .45; cursor: default; }
     <div id="log"></div>
   </div>
   <p class="note">Your mods need <code>citadel/addons</code> turned on (a mod manager does that). Themes only restyle; they
-  don't need the UI Kit runtime. To remove a theme, delete its <code>pakNN_dir.vpk</code> from the addons folder, or
+  don't need the UI Kit runtime; themes with widgets get it installed with them. To remove a theme, delete its <code>pakNN_dir.vpk</code> from the addons folder, or
   install another one in its place.</p>
 </main>
 <div id="zoom"><img alt=""></div>
@@ -153,7 +153,8 @@ async function loadBundle() {
   bundle = await (await fetch("bundle.json")).json();
   $("presets").innerHTML = bundle.presets.map((p, i) => '<button class="preset" data-i="' + i + '">' +
     (p.shots && p.shots.length ? '<img src="' + esc(p.shots[0].src) + '" alt="' + esc(p.name) + ' in the game" loading="lazy">' : "") +
-    "<b>" + esc(p.name) + "</b><p>" + esc(p.description) + "</p></button>").join("");
+    "<b>" + esc(p.name) + "</b><p>" + esc(p.description) + "</p>" +
+    ((JSON.parse(p.files["pack.json"]).widgets || []).length ? "<p style='color:var(--accent)'>Widgets: installs UI Kit with it.</p>" : "") + "</button>").join("");
   document.querySelectorAll(".preset").forEach((b) => b.onclick = () => choose(+b.dataset.i));
   choose(0);
 }
@@ -279,6 +280,13 @@ function packFiles() {
   return out;
 }
 
+function hasWidgets() { return (JSON.parse(preset.files["pack.json"]).widgets || []).length > 0; }
+
+async function readPiece(p) {
+  const B = await startPython();
+  B.load(p.path, await files.slice("game/" + p.folder + "/pak01_" + String(p.archive).padStart(3, "0") + ".vpk", p.offset, p.length));
+}
+
 async function buildVpk() {
   const B = await startPython();
   const steam = new TextDecoder().decode(await files.read("game/citadel/steam.inf"));
@@ -291,7 +299,7 @@ async function buildVpk() {
   const themes = Object.keys(pf).filter((f) => /^theme\/.*\.css$/.test(f)).map((f) => f.slice(6, -4));
   const plan = JSON.parse(B.plan(JSON.stringify(themes)));
   log("reading " + plan.length + " pieces of the game's files...");
-  const piece = async (p) => B.load(p.path, await files.slice("game/" + p.folder + "/pak01_" + String(p.archive).padStart(3, "0") + ".vpk", p.offset, p.length));
+  const piece = readPiece;
   for (let i = 0; i < plan.length; i += 24) await Promise.all(plan.slice(i, i + 24).map(piece));
   log("building...");
   for (let round = 0; round < 20; round++) {
@@ -312,7 +320,8 @@ $("download").onclick = async () => {
     const blob = new Blob([py.FS.readFile(r.vpk)], { type: "application/octet-stream" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = r.id + "_dir.vpk"; a.click();
-    log("saved " + r.id + "_dir.vpk: put it in game/citadel/addons as the next free pakNN_dir.vpk", "ok");
+    log("saved " + r.id + "_dir.vpk: put it in game/citadel/addons as the next free pakNN_dir.vpk" +
+        (hasWidgets() ? ". This theme has widgets: it also needs UI Kit itself (use Build and install, which adds it)" : ""), "ok");
   } catch (e) { log(String(e.message || e), "bad"); }
   busy(false);
 };
@@ -333,10 +342,21 @@ $("install").onclick = async () => {
       py.FS.writeFile("/install/game/citadel/addons/" + n, big ? new TextEncoder().encode("stub") : await files.read("game/citadel/addons/" + n));
       listing[n] = big ? null : true;
     }
-    let plan = JSON.parse(B.install_plan("", JSON.stringify(listing), r.vpk, false));
+    // a preset with widgets needs UI Kit's runtime too: built here as well, installed (or updated) before it
+    let runtime = null;
+    if (hasWidgets()) {
+      log("building UI Kit (this theme has widgets)...");
+      for (let round = 0; round < 20 && !runtime; round++) {
+        const rt = JSON.parse(B.build_runtime());
+        if (rt.missing) { await readPiece(rt.missing); continue; }
+        if (rt.error) throw new Error(rt.error);
+        runtime = rt.vpk;
+      }
+    }
+    let plan = JSON.parse(B.install_plan("", JSON.stringify(listing), r.vpk, false, runtime));
     if (plan.error && plan.conflict && plan.conflict.length) {
       if (!confirm("Installed theme " + plan.conflict.join(", ") + " changes the same parts of the HUD. Replace it with " + r.id + "?")) { log("not installed", "bad"); busy(false); return; }
-      plan = JSON.parse(B.install_plan("", JSON.stringify(listing), r.vpk, true));
+      plan = JSON.parse(B.install_plan("", JSON.stringify(listing), r.vpk, true, runtime));
     }
     if (plan.error) throw new Error(plan.error);
     for (const [name, src] of Object.entries(plan.write)) await files.write("game/citadel/addons/" + name, py.FS.readFile(src));
