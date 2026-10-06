@@ -353,6 +353,7 @@ $("install").onclick = async () => {
         runtime = rt.vpk;
       }
     }
+    B.install_start();
     let plan = JSON.parse(B.install_plan("", JSON.stringify(listing), r.vpk, false, runtime));
     if (plan.error && plan.conflict && plan.conflict.length) {
       if (!confirm("Installed theme " + plan.conflict.join(", ") + " changes the same parts of the HUD. Replace it with " + r.id + "?")) { log("not installed", "bad"); busy(false); return; }
