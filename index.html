@@ -14,11 +14,19 @@ h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 30px 0 12px; font-weight: 600; }
 h2 b { color: var(--accent); margin-right: 6px; }
 .presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.preset { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: var(--panel); cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.preset { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: var(--panel); cursor: pointer; text-align: left; color: inherit; font: inherit; display: flex; flex-direction: column; justify-content: flex-start; }
 .preset:hover { border-color: #3d4756; }
 .preset.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .preset b { font-size: 16px; }
 .preset p { margin: 6px 0 0; color: var(--dim); font-size: 13.5px; }
+.preset img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; margin-bottom: 10px; border: 1px solid var(--line); }
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.shots figure { margin: 0; }
+.shots img { display: block; width: 100%; border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; }
+.shots figcaption, .label { color: var(--dim); font-size: 12px; margin-top: 3px; }
+.label { margin: 0 0 6px; text-transform: uppercase; letter-spacing: .07em; font-size: 11px; font-weight: 600; }
+#zoom { position: fixed; inset: 0; background: #000000e0; display: none; align-items: center; justify-content: center; cursor: zoom-out; z-index: 10; padding: 2vw; }
+#zoom img { max-width: 100%; max-height: 100%; border-radius: 6px; }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 22px; align-items: start; }
 @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
 .box { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 14px 16px; }
@@ -74,8 +82,10 @@ button.go:disabled { opacity: .45; cursor: default; }
   <h2><b>2</b>Colours and font</h2>
   <div class="cols">
     <div class="box" id="vars"></div>
-    <div><div class="hud" id="sketch"></div><p class="note">A sketch with your colours, not the game. The real thing shows
-      in the game after installing (restart Deadlock).</p></div>
+    <div><p class="label">In the game, as it comes</p><div class="shots" id="shots"></div>
+      <p class="label" style="margin-top:14px">With your colours (a sketch)</p><div class="hud" id="sketch"></div>
+      <p class="note">The sketch only shows your colours; the screenshots show the theme in the game with its own.
+      Your version shows in the game after installing (restart Deadlock).</p></div>
   </div>
 
   <h2><b>3</b>Install</h2>
@@ -91,6 +101,7 @@ button.go:disabled { opacity: .45; cursor: default; }
   don't need the UI Kit runtime. To remove a theme, delete its <code>pakNN_dir.vpk</code> from the addons folder, or
   install another one in its place.</p>
 </main>
+<div id="zoom"><img alt=""></div>
 <script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
 <script>
 "use strict";
@@ -140,7 +151,9 @@ const files = TEST ? {
 // ------------------------------------------------------------------ presets and vars
 async function loadBundle() {
   bundle = await (await fetch("bundle.json")).json();
-  $("presets").innerHTML = bundle.presets.map((p, i) => '<button class="preset" data-i="' + i + '"><b>' + esc(p.name) + "</b><p>" + esc(p.description) + "</p></button>").join("");
+  $("presets").innerHTML = bundle.presets.map((p, i) => '<button class="preset" data-i="' + i + '">' +
+    (p.shots && p.shots.length ? '<img src="' + esc(p.shots[0].src) + '" alt="' + esc(p.name) + ' in the game" loading="lazy">' : "") +
+    "<b>" + esc(p.name) + "</b><p>" + esc(p.description) + "</p></button>").join("");
   document.querySelectorAll(".preset").forEach((b) => b.onclick = () => choose(+b.dataset.i));
   choose(0);
 }
@@ -152,6 +165,9 @@ function choose(i) {
   vars = {};
   Object.entries(spec.vars || {}).forEach(([k, v]) => { vars[k] = Object.assign({ label: k, type: "text" }, typeof v === "object" ? v : { value: v }); });
   $("name").value = "My " + preset.name;
+  $("shots").innerHTML = (preset.shots || []).map((s) => '<figure><img src="' + esc(s.src) + '" alt="' + esc(preset.name + ": " + s.caption) + '"><figcaption>' +
+    esc(s.caption) + "</figcaption></figure>").join("");
+  $("shots").querySelectorAll("img").forEach((im) => im.onclick = () => { $("zoom").querySelector("img").src = im.src; $("zoom").style.display = "flex"; });
   renderVars();
   sketch();
   nameChanged();
@@ -335,6 +351,7 @@ $("install").onclick = async () => {
 
 function busy(on) { $("install").disabled = $("download").disabled = on || !folder; $("pick").disabled = on; }
 
+$("zoom").onclick = () => { $("zoom").style.display = "none"; };
 loadBundle();
 </script>
 </body>
