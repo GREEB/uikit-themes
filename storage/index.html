@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>UKS|ready</title>
+<!--
+  UI Kit's settings storage. The game loads this page in a hidden browser panel (CitadelHTMLPanel) and talks
+  to it through the address and the title: it sets the fragment to a command, the page answers in its title.
+  Settings live in this page's localStorage (keys "uikit.<name>"), in the game's own browser profile, so they
+  stay on the player's PC and survive restarts. When another copy of this page (the settings menu's) changes a
+  setting, the browser fires a "storage" event here and the page reports it, so the HUD follows at once.
+
+  Commands (the fragment): <n>|get|<key>   <n>|set|<key>|<value>   <n>|all
+  Answers (the title):     UKS|<n>|ok|<json>    UKS|<n>|err|<message>    UKS|changed|<json {key: value}>
+-->
+<script>
+(function () {
+  "use strict";
+  var PREFIX = "uikit.", MAX = 3800;
+  function say(text) { document.title = text.length > MAX ? text.slice(0, MAX) : text; }
+  function all() {
+    var out = {};
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf(PREFIX) === 0) out[k.slice(PREFIX.length)] = localStorage.getItem(k);
+    }
+    return out;
+  }
+  function run() {
+    var parts = decodeURIComponent(location.hash.slice(1)).split("|");
+    var n = parts[0], cmd = parts[1];
+    if (!n || !cmd) return;
+    try {
+      if (cmd === "get") say("UKS|" + n + "|ok|" + JSON.stringify(localStorage.getItem(PREFIX + parts[2])));
+      else if (cmd === "set") { localStorage.setItem(PREFIX + parts[2], parts.slice(3).join("|")); say("UKS|" + n + "|ok|true"); }
+      else if (cmd === "all") say("UKS|" + n + "|ok|" + JSON.stringify(all()));
+      else say("UKS|" + n + "|err|unknown command " + cmd);
+    } catch (e) { say("UKS|" + n + "|err|" + e); }
+  }
+  window.addEventListener("hashchange", run);
+  window.addEventListener("storage", function (e) {
+    if (!e.key || e.key.indexOf(PREFIX) !== 0) return;
+    var o = {}; o[e.key.slice(PREFIX.length)] = e.newValue;
+    say("UKS|changed|" + JSON.stringify(o));
+  });
+  run();
+})();
+</script>
